@@ -1,8 +1,5 @@
 ﻿using CompararPrecios.Models;
 using HtmlAgilityPack;
-using System.Net.Http;
-using System;
-using System.Xml.Linq;
 using System.Text.RegularExpressions;
 
 namespace CompararPrecios.Utils
@@ -11,6 +8,7 @@ namespace CompararPrecios.Utils
     {
         public async Task<List<Product>> GetProductFromShopAsync(string shopUrl)
         {
+            List<Product> products = new List<Product>();
             using var httpClient = new HttpClient();
 
             var response = await httpClient.GetAsync(shopUrl);
@@ -26,44 +24,62 @@ namespace CompararPrecios.Utils
 
             if (ulNode != null)
             {
-                var liNodes = ulNode.SelectNodes(".//li");
+                var liNodes = ulNode.SelectNodes("li");
 
                 if (liNodes != null)
                 {
-                    var liList = new List<string>();
+                    List<HtmlNode> liNodesList = liNodes.ToList();
+                    List<string> liHtmls = liNodesList.Select(v=>v.InnerHtml).ToList();
 
-                    foreach (var liNode in liNodes)
+                    foreach (string liNodeStr in liHtmls)
                     {
-                        Product product = new Product();
+                        var liDocument = new HtmlDocument();
+                        liDocument.LoadHtml(liNodeStr);
+                        var liNode = liDocument.DocumentNode;
+                        try
+                        {
+                            var productNode = liNode.SelectSingleNode(".//a[contains(concat(' ', @class, ' '), 'name')]");
 
-                        //nombre y descripcion
-                        var productNode = liNode.SelectSingleNode(".//a[contains(concat(' ', @class, ' '), 'name')]");
-                        product.Name = CleanString(productNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'brand')]").InnerText);
-                        product.Description = CleanString(productNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'productname')]").InnerText);
+                            if (productNode != null)
+                            {
+                                Product product = new Product();
 
-                        //precio
-                        productNode = liNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'details')]");
+                                //nombre y descripcion
+                                product.Name = CleanString(productNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'brand')]").InnerText);
+                                product.Description = CleanString(productNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'productname')]").InnerText);
 
+                                //precio
+                                productNode = liNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'details')]");
+                                product.Price = Convert.ToDouble(productNode.InnerHtml.Split("content=")[1].Split("\"")[1]);
 
-                        //foto
-                        productNode = liNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'img')]");
-                        var priceNode = productNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'price')]");
-                        product.Price = ExtractValue(priceNode.InnerText);
+                                //foto
+                                productNode = liNode.SelectSingleNode(".//span[contains(concat(' ', @class, ' '), 'img')]");
+                                product.Image = productNode.InnerHtml.Split("src=")[1].Split("\"")[1];
 
-                        //url
-                        string innerLiUrlNode = liNode.SelectNodes(".//*")[0].SelectNodes(".//*")[1].InnerHtml;
-                        innerLiUrlNode = "https://soysuper.com" + innerLiUrlNode.Split("href=")[1].Split("\"")[1];
-                        product.Url = innerLiUrlNode;
+                                //url
+                                string innerLiUrlHtml = liNode.InnerHtml.Split("href=")[1].Split("\"")[1];
+                                product.Url = "https://soysuper.com" + innerLiUrlHtml;
 
-                        //supermercado
+                                //supermercado
+                                response = await httpClient.GetAsync(product.Url);
+                                response.EnsureSuccessStatusCode();
 
+                                htmlContent = await response.Content.ReadAsStringAsync();
 
-                    }
+                                htmlDoc.LoadHtml(htmlContent);
 
-                    Console.WriteLine("Lista de elementos <li>:");
-                    foreach (var li in liList)
-                    {
-                        Console.WriteLine(li);
+                                string xqueryShop = "//section[contains(concat(' ', @class, ' '), 'superstable')]";
+                                var supermarketNode = htmlDoc.DocumentNode.SelectSingleNode(xqueryShop);
+                                supermarketNode = supermarketNode.SelectSingleNode(".//th");
+                                product.Shop = supermarketNode.InnerHtml.Split("title=")[1].Split("\"")[1];
+
+                                products.Add(product);
+
+                            }
+                        }catch(Exception ex)
+                        {
+
+                        }
                     }
                 }
             }
@@ -74,7 +90,7 @@ namespace CompararPrecios.Utils
 
 
 
-            return [];
+            return products;
         }
 
         private string CleanString(string input)
