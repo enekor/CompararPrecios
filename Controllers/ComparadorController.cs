@@ -13,12 +13,14 @@ namespace CompararPrecios.Controllers
         }
 
         [HttpGet("/[controller]/GetCatalogs")]
-        public async Task<IActionResult> GetCatalogs(string nombre)
+        public async Task<IActionResult> GetCatalogs(string nombre, int page)
         {
             PriceComparator comparator = new PriceComparator();
-            var catalog = await comparator.GetCatalog(nombre);
+            var catalog = await comparator.GetCatalog(nombre,page);
 
             return Ok(catalog);
         }
+
+
     }
 }
